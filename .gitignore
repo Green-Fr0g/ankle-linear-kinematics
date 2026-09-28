@@ -1,0 +1,19 @@
+# Python 运行产物
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Python 虚拟环境
+.venv/
+venv/
+env/
+
+# MuJoCo 运行日志（查看器/引擎会在工作目录生成）
+MUJOCO_LOG.TXT
+
+# 系统 / 编辑器杂项
+.idea/
+.DS_Store
+*.swp
