@@ -6,16 +6,20 @@
     连续轨迹  1 kHz 采样的圆形轨迹，保留热启动（相当于实际状态估计）
 
 用法：
-    .venv/bin/python bench_fk.py
-    .venv/bin/python bench_fk.py --step 0.5 --samples 20000   # 不读文件，按指定步长现场建表
+    .venv/bin/python scripts/bench_fk.py
+    .venv/bin/python scripts/bench_fk.py --step 0.5 --samples 20000   # 不读文件，按指定步长现场建表
 """
 import argparse
 import math
 import random
+import sys
 import time
+from pathlib import Path
 
-from ankle_lut import DEFAULT_LUT_PATH, FK_METHODS, calf_actuator_config, make_kinematics
-from param import (
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # 让脚本能导入 ankle
+
+from ankle import FK_METHODS, LUT_PATH, calf_actuator_config, make_kinematics  # noqa: E402
+from ankle.params import (  # noqa: E402
     CALF_ACTUATOR_LENGTH_RANGE as LENGTH_RANGE,
     CALF_ACTUATOR_ROLL_RANGE as ROLL_RANGE,
     CALF_ACTUATOR_PITCH_RANGE as PITCH_RANGE,
@@ -78,8 +82,8 @@ def main():
 
     cfg = calf_actuator_config()
     if args.step is None:
-        lut_kw = dict(lut_path=DEFAULT_LUT_PATH)
-        source = f"读取 {DEFAULT_LUT_PATH.name}"
+        lut_kw = dict(lut_path=LUT_PATH)
+        source = f"读取 {LUT_PATH.name}"
     else:
         lut_kw = dict(lut_path=None, step=args.step * 1e-3)
         source = "现场建表"

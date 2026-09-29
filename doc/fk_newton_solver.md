@@ -1,6 +1,6 @@
 # 踝关节正向运动学求解计算过程
 
-本文说明 `ankle_fk_solver.py` 中 `_solve_pose` 和 `check_singularity` 的计算过程。本文使用普通文本数学表达式，不依赖 LaTeX 渲染器。
+本文说明 `ankle/kinematics.py` 中 `_solve_pose` 和 `check_singularity` 的计算过程。本文使用普通文本数学表达式，不依赖 LaTeX 渲染器。
 
 ## 1. 长度约束
 

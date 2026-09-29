@@ -162,7 +162,7 @@ $$
 
 # 5. 数值求解（代码实现）
 
-`ankle_kinematics.py` 没有走第 4 节的一维方程，而是直接对两条长度约束做二维 Newton 迭代：
+`ankle/kinematics.py` 没有走第 4 节的一维方程，而是直接对两条长度约束做二维 Newton 迭代：
 
 $$
 \mathbf{r}(\alpha,\theta)=

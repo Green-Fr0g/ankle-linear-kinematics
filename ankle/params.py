@@ -1,11 +1,14 @@
 """
 踝关节直线模组机构参数配置
 
-坐标约定见 ankle_geometry.py：以踝关节旋转中心为原点，参数为带符号的真实坐标（米）。
+坐标约定见 geometry.py：以踝关节旋转中心为原点，参数为带符号的真实坐标（米）。
     a1 = (ax,  ay, az)    a2 = (ax, -ay, az)
     b1 = (bx,  by, bz)    b2 = (bx, -by, bz)
+
+修改 CALF_ACTUATOR_* 中的几何 / 行程 / 限位后，需重新生成查表文件：
+    .venv/bin/python scripts/build_lut.py
 """
-from ankle_geometry import AnkleGeometry
+from .geometry import AnkleGeometry
 
 
 # 标准机构几何参数（单位：米）
@@ -81,3 +84,24 @@ def get_geometry(name: str = "standard") -> AnkleGeometry:
         )
 
     return configs[name]
+
+
+def widen(rng, margin: float):
+    """区间两端各放宽 margin"""
+    return (rng[0] - margin, rng[1] + margin)
+
+
+def calf_actuator_config() -> dict:
+    """calf_actuator 模型的几何与状态估计用限位（建表、仿真、对比脚本共用）
+
+    Returns:
+        dict(geometry, alpha_range, theta_range, length_range)，可直接 ** 传给
+        AnkleLUT.build / make_kinematics
+    """
+    m = CALF_ACTUATOR_ESTIMATOR_MARGIN
+    return dict(
+        geometry=CALF_ACTUATOR_GEOMETRY,
+        alpha_range=widen(CALF_ACTUATOR_ROLL_RANGE, m),
+        theta_range=widen(CALF_ACTUATOR_PITCH_RANGE, m),
+        length_range=CALF_ACTUATOR_LENGTH_RANGE,
+    )

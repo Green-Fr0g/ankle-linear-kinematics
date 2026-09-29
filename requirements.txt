@@ -1,0 +1,5 @@
+# 运动学库 ankle/ 只需要 numpy；其余用于仿真、手柄与绘图
+numpy==2.2.6
+mujoco==3.14.0
+matplotlib==3.10.9
+pygame==2.6.1

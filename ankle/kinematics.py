@@ -17,7 +17,7 @@
     状态估计：编码器 (l, l̇, F)   → forward_kinematics / forward_velocity / force_to_torque
     控制下发：规划器 (q*, q̇*, τ*) → inverse_kinematics / inverse_velocity / torque_to_force
 
-几何与旋转约定（与 model/xml/calf_actuator.xml 一致，见 ankle_geometry.py）：
+几何与旋转约定（与 model/xml/calf_actuator.xml 一致，见 geometry.py）：
     R(alpha, theta) = Ry(theta) · Rx(alpha)     # pitch 为父关节，roll 为子关节
     e_i = a_i - R · b_i,  l_i = |e_i|
 
@@ -27,7 +27,7 @@
 """
 import math
 from typing import Optional, Tuple
-from ankle_geometry import AnkleGeometry, AnkleState, Vec3
+from .geometry import AnkleGeometry, AnkleState, Vec3
 
 Vec2 = Tuple[float, float]
 Mat2 = Tuple[Vec2, Vec2]
