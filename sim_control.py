@@ -30,12 +30,10 @@ from pathlib import Path
 import mujoco
 
 from ankle_kinematics import AnkleKinematics
-from ankle_lut import FK_METHODS, make_kinematics
+from ankle_lut import DEFAULT_LUT_PATH, FK_METHODS, calf_actuator_config, make_kinematics
 from param import (
-    get_geometry,
     CALF_ACTUATOR_NOMINAL_LENGTH as L0,
     CALF_ACTUATOR_STROKE_RANGE as STROKE_RANGE,
-    CALF_ACTUATOR_LENGTH_RANGE as LENGTH_RANGE,
     CALF_ACTUATOR_ROLL_RANGE as ROLL_RANGE,
     CALF_ACTUATOR_PITCH_RANGE as PITCH_RANGE,
 )
@@ -44,9 +42,6 @@ ROOT = Path(__file__).parent
 XML_PATH = ROOT / "model" / "xml" / "calf_actuator.xml"
 LOG_DIR = ROOT / "logs"
 ACTUATORS = ("linear_actuator_b1", "linear_actuator_b2")
-
-# 估计器限位留一点余量：MuJoCo 关节限位是软约束，撞限位时会略微越界
-ESTIMATOR_MARGIN = 0.05  # rad
 
 NAN = float("nan")
 
@@ -57,18 +52,15 @@ NAN = float("nan")
 class AnkleSim:
     """MuJoCo 模型 + 只依赖编码器传感器的状态估计"""
 
-    def __init__(self, fk: str = "newton", xml_path: Path = XML_PATH):
+    def __init__(self, fk: str = "newton", lut_path: Path = DEFAULT_LUT_PATH,
+                 xml_path: Path = XML_PATH):
         self.model = mujoco.MjModel.from_xml_path(str(xml_path))
         self.data = mujoco.MjData(self.model)
         self.dt = self.model.opt.timestep
         self.fk = fk
-        self.kin: AnkleKinematics = make_kinematics(
-            fk,
-            get_geometry("calf_actuator"),
-            alpha_range=(ROLL_RANGE[0] - ESTIMATOR_MARGIN, ROLL_RANGE[1] + ESTIMATOR_MARGIN),
-            theta_range=(PITCH_RANGE[0] - ESTIMATOR_MARGIN, PITCH_RANGE[1] + ESTIMATOR_MARGIN),
-            length_range=LENGTH_RANGE,
-        )
+        # 估计器限位比关节限位宽 CALF_ACTUATOR_ESTIMATOR_MARGIN（见 param.py）
+        self.kin: AnkleKinematics = make_kinematics(fk, lut_path=lut_path,
+                                                    **calf_actuator_config())
         self.estimate_failures = 0
 
     def _s(self, name: str) -> float:
@@ -484,6 +476,8 @@ def parse_args():
     common.add_argument("--fk", choices=FK_METHODS, default="lut-newton",
                         help="位置正解方法：newton 迭代 / lut 查表插值 / "
                              "lut-newton 查表初值 + Newton 精修（默认 lut-newton）")
+    common.add_argument("--lut", type=Path, default=DEFAULT_LUT_PATH,
+                        help="查表文件（默认 model/lut/calf_actuator_fk_lut.npz）")
 
     js = sub.add_parser("joystick", parents=[common], help="手柄控制两根直线模组")
     js.add_argument("--duration", type=float, default=None,
@@ -511,8 +505,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    sim = AnkleSim(args.fk)
-    print(f"[正解] {args.fk}")
+    sim = AnkleSim(args.fk, args.lut)
+    print(f"[正解] {args.fk}" + (f"，查表文件 {args.lut}" if args.fk != "newton" else ""))
     viewer = not args.no_viewer
 
     if args.mode == "joystick":

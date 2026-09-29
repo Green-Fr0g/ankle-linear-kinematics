@@ -7,21 +7,19 @@
 
 用法：
     .venv/bin/python bench_fk.py
-    .venv/bin/python bench_fk.py --step 0.5 --samples 20000
+    .venv/bin/python bench_fk.py --step 0.5 --samples 20000   # 不读文件，按指定步长现场建表
 """
 import argparse
 import math
 import random
 import time
 
-from ankle_lut import FK_METHODS, make_kinematics
+from ankle_lut import DEFAULT_LUT_PATH, FK_METHODS, calf_actuator_config, make_kinematics
 from param import (
-    get_geometry,
     CALF_ACTUATOR_LENGTH_RANGE as LENGTH_RANGE,
     CALF_ACTUATOR_ROLL_RANGE as ROLL_RANGE,
     CALF_ACTUATOR_PITCH_RANGE as PITCH_RANGE,
 )
-from sim_control import ESTIMATOR_MARGIN
 
 
 def random_poses(kin, n, seed=0):
@@ -73,23 +71,25 @@ def evaluate(kin, poses, cold):
 
 def main():
     p = argparse.ArgumentParser(description="位置正解方法对比")
-    p.add_argument("--step", type=float, default=1.0, help="查表网格步长 mm（默认 1）")
+    p.add_argument("--step", type=float, default=None,
+                   help="查表网格步长 mm；指定时现场建表，否则读取查表文件")
     p.add_argument("--samples", type=int, default=5000, help="随机姿态数（默认 5000）")
     args = p.parse_args()
 
-    geom = get_geometry("calf_actuator")
-    ranges = dict(
-        alpha_range=(ROLL_RANGE[0] - ESTIMATOR_MARGIN, ROLL_RANGE[1] + ESTIMATOR_MARGIN),
-        theta_range=(PITCH_RANGE[0] - ESTIMATOR_MARGIN, PITCH_RANGE[1] + ESTIMATOR_MARGIN),
-        length_range=LENGTH_RANGE,
-    )
+    cfg = calf_actuator_config()
+    if args.step is None:
+        lut_kw = dict(lut_path=DEFAULT_LUT_PATH)
+        source = f"读取 {DEFAULT_LUT_PATH.name}"
+    else:
+        lut_kw = dict(lut_path=None, step=args.step * 1e-3)
+        source = "现场建表"
     kins = {}
     for m in FK_METHODS:
         t0 = time.perf_counter()
-        kins[m] = make_kinematics(m, geom, step=args.step * 1e-3, **ranges)
+        kins[m] = make_kinematics(m, **lut_kw, **cfg)
         lut = getattr(kins[m], "lut", None)
         if lut is not None:
-            print(f"[{m}] 建表 {lut.n}x{lut.n}，步长 {lut.step*1e3:.3f} mm，"
+            print(f"[{m}] {source}：{lut.n}x{lut.n}，步长 {lut.step*1e3:.3f} mm，"
                   f"可达节点 {lut.valid_ratio:.1%}，耗时 {time.perf_counter()-t0:.2f} s")
 
     ref = kins["newton"]
