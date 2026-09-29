@@ -1,1030 +1,310 @@
-# 人形机器人直线模组小腿机构 FK 推导（含 h₂ 偏置）
+# 人形机器人直线模组小腿机构 FK 推导
 
-## 1. 几何模型
+与 `model/xml/calf_actuator.xml` 保持一致：坐标系、安装点编号、关节层级全部对应。
 
-小腿固定端连接点：
+------------------------------------------------------------------------
 
-\[ a_1=(-m,-n,h) \]
+# 1. 坐标约定
 
-\[ a_2=(-m,n,h) \]
+原点取**踝关节旋转中心**（XML 中 `ankle_pitch_Link` 在 `calf_link` 下的位置
+`(0.049, 0, -0.378)`），坐标轴方向与 XML 相同，$z$ 轴向上。
 
-脚踝局部坐标系下的连接点：
+所有参数都是**带符号的真实坐标**，公式中不再额外加负号：
 
-\[ b_1=(-c,-d,-h_2) \]
+$$
+a_1=(a_x,\ a_y,\ a_z),\qquad a_2=(a_x,\ -a_y,\ a_z)
+$$
 
-\[ b_2=(-c,d,-h_2) \]
+$$
+b_1=(b_x,\ b_y,\ b_z),\qquad b_2=(b_x,\ -b_y,\ b_z)
+$$
 
-两根直线模组长度：
+-   $a_i$：小腿上的固定安装点（踝中心系，不随脚踝转动）
+-   $b_i$：脚踝上的安装点（脚踝局部系，随脚踝转动）
+-   下标 1 位于 $+y$ 侧（XML `actuator_b1`），下标 2 位于 $-y$ 侧（`actuator_b2`），要求 $a_y>0,\ b_y>0$
+-   $l_i$：连接 $a_i$ 与 $b_i$ 的直线模组长度
 
-\[ l_1=\|a_1-Rb_1\| \]
+`calf_actuator.xml` 对应数值（米）：
 
-\[ l_2=\|a_2-Rb_2\| \]
+| 参数 | 值 | 来源 |
+|---|---|---|
+| $a_x$ | −0.061 | site a1 的 x：−0.012 − 0.049 |
+| $a_y$ | 0.0405 | site a1 的 y |
+| $a_z$ | 0.291 | site a1 的 z：−0.087 − (−0.378) |
+| $b_x$ | −0.075 | site b1 的 x |
+| $b_y$ | 0.0405 | site b1 的 y |
+| $b_z$ | 0.001 | site b1 的 z（比旋转中心高 1 mm） |
 
-其中：
-
--   $\alpha$：脚踝 roll 角
--   $\theta$：脚踝 pitch 角
--   $h_2$：脚踝连接点相对于脚踝旋转中心的局部 z 方向偏置
--   $l_1$：连接 $a_1$ 与 $b_1$ 的直线模组长度
--   $l_2$：连接 $a_2$ 与 $b_2$ 的直线模组长度
+零位推杆长度 $|a_1-b_1|=\sqrt{0.014^2+0.290^2}\approx0.290338$ m，行程 ±0.04 m。
 
 ------------------------------------------------------------------------
 
 # 2. 旋转约定
 
-采用：
+XML 中 `ankle_pitch_joint`（绕 $y$）是父关节，`ankle_roll_joint`（绕 $x$）挂在它下面，因此：
 
 $$
-R(\alpha,\theta)=R_x(\alpha)R_y(\theta)
+R(\alpha,\theta)=R_y(\theta)\,R_x(\alpha)
 $$
 
-其中：
+-   $\alpha$：roll 角（`ankle_roll_joint`）
+-   $\theta$：pitch 角（`ankle_pitch_joint`）
 
-$$
-R_x(\alpha)=
-\begin{bmatrix}
-1&0&0\\
-0&\cos\alpha&-\sin\alpha\\
-0&\sin\alpha&\cos\alpha
-\end{bmatrix}
-$$
-
-$$
-R_y(\theta)=
-\begin{bmatrix}
-\cos\theta&0&\sin\theta\\
-0&1&0\\
--\sin\theta&0&\cos\theta
-\end{bmatrix}
-$$
-
-因此：
+记 $s_\alpha=\sin\alpha,\ c_\alpha=\cos\alpha,\ s_\theta=\sin\theta,\ c_\theta=\cos\theta$：
 
 $$
 R=
 \begin{bmatrix}
-\cos\theta&0&\sin\theta\\
-\sin\alpha\sin\theta&\cos\alpha&-\sin\alpha\cos\theta\\
--\cos\alpha\sin\theta&\sin\alpha&\cos\alpha\cos\theta
+c_\theta & s_\theta s_\alpha & s_\theta c_\alpha\\
+0 & c_\alpha & -s_\alpha\\
+-s_\theta & c_\theta s_\alpha & c_\theta c_\alpha
 \end{bmatrix}
 $$
 
-为了简化公式，定义：
-
-\[
-s\_`\alpha`{=tex}=`\sin`{=tex}`\alpha`{=tex},`\qquad `{=tex}c\_`\alpha`{=tex}=`\cos`{=tex}`\alpha`{=tex}
-\]
-
-\[
-s\_`\theta`{=tex}=`\sin`{=tex}`\theta`{=tex},`\qquad `{=tex}c\_`\theta`{=tex}=`\cos`{=tex}`\theta`{=tex}
-\]
+> 旋转顺序不可交换。若写成 $R_x(\alpha)R_y(\theta)$，单轴转动时结果相同，
+> 但两轴同时转动时与 MuJoCo 不一致（限位角附近误差可达 20° 量级）。
 
 ------------------------------------------------------------------------
 
-# 3. 旋转后的连接点
+# 3. 长度方程
 
-## 3.1 $b_1$
-
-$$
-b_1=
-\begin{bmatrix}
--c\\
--d\\
--h_2
-\end{bmatrix}
-$$
-
-旋转后：
+## 3.1 向量形式
 
 $$
-Rb_1=
-\begin{bmatrix}
--c c_\theta-h_2s_\theta\\
--cs_\alpha s_\theta-dc_\alpha+h_2s_\alpha c_\theta\\
-cc_\alpha s_\theta+ds_\alpha-h_2c_\alpha c_\theta
-\end{bmatrix}
+l_i=\|a_i-R\,b_i\|,\qquad i=1,2
 $$
 
-------------------------------------------------------------------------
-
-## 3.2 $b_2$
-
-$$
-b_2=
-\begin{bmatrix}
--c\\
-d\\
--h_2
-\end{bmatrix}
-$$
-
-旋转后：
-
-$$
-Rb_2=
-\begin{bmatrix}
--c c_\theta-h_2s_\theta\\
--cs_\alpha s_\theta+dc_\alpha+h_2s_\alpha c_\theta\\
-cc_\alpha s_\theta+ds_\alpha-h_2c_\alpha c_\theta
-\end{bmatrix}
-$$
-
-------------------------------------------------------------------------
-
-# 4. 两根直线模组长度方程
-
-## 4.1 第一根直线模组
-
-定义：
-
-\[ l_1=\|a_1-Rb_1\| \]
-
-展开后：
+由于 $R$ 为正交矩阵，$\|Rb_i\|=\|b_i\|$，平方展开为：
 
 $$
 \boxed{
-\begin{aligned}
-l_1^2={}&
-m^2+n^2+h^2+c^2+d^2+h_2^2\\
-&-2cm\cos\theta\\
-&-2mh_2\sin\theta\\
-&-2cn\sin\alpha\sin\theta\\
-&-2nd\cos\alpha\\
-&+2nh_2\sin\alpha\cos\theta\\
-&-2hc\cos\alpha\sin\theta\\
-&-2hd\sin\alpha\\
-&+2hh_2\cos\alpha\cos\theta
-\end{aligned}}
-$$
-
-------------------------------------------------------------------------
-
-## 4.2 第二根直线模组
-
-定义：
-
-\[ l_2=\|a_2-Rb_2\| \]
-
-展开后：
-
-$$
-\boxed{
-\begin{aligned}
-l_2^2={}&
-m^2+n^2+h^2+c^2+d^2+h_2^2\\
-&-2cm\cos\theta\\
-&-2mh_2\sin\theta\\
-&+2cn\sin\alpha\sin\theta\\
-&-2nd\cos\alpha\\
-&-2nh_2\sin\alpha\cos\theta\\
-&-2hc\cos\alpha\sin\theta\\
-&-2hd\sin\alpha\\
-&+2hh_2\cos\alpha\cos\theta
-\end{aligned}}
-$$
-
-------------------------------------------------------------------------
-
-# 5. 两式相加
-
-定义：
-
-\[ C=m^2+n^2+h^2+c^2+d^2+h_2^2 \]
-
-以及：
-
-$$
-S=\frac{l_1^2+l_2^2}{2}
-$$
-
-将两式相加：
-
-$$
-\begin{aligned}
-S={}&
-C
--2cm\cos\theta
--2mh_2\sin\theta\\
-&-2nd\cos\alpha
--2hc\cos\alpha\sin\theta\\
-&+2hh_2\cos\alpha\cos\theta
-\end{aligned}
-$$
-
-整理：
-
-$$
-\boxed{
-S=
-C
--2cm\cos\theta
--2mh_2\sin\theta
--2
-\left(
-dn+hc\sin\theta-hh_2\cos\theta
-\right)
-\cos\alpha
+l_i^2=\|a_i\|^2+\|b_i\|^2-2\,a_i^{T}R\,b_i
 }
 $$
 
-因此：
+两侧镜像对称，$\|a_1\|=\|a_2\|$、$\|b_1\|=\|b_2\|$，记常量：
 
 $$
-\boxed{
-\cos\alpha=
-\frac{
-C-S-2cm\cos\theta-2mh_2\sin\theta
-}{
-2(dn+hc\sin\theta-hh_2\cos\theta)
-}
-}
+K=a_x^2+a_y^2+a_z^2+b_x^2+b_y^2+b_z^2
 $$
 
-------------------------------------------------------------------------
+## 3.2 标量展开
 
-# 6. 两式相减
-
-定义：
+把 $a_i^TRb_i$ 按 $a_y, b_y$ 的符号拆开，定义三个只与 $\theta$ 有关的量：
 
 $$
-D=\frac{l_1^2-l_2^2}{4}
-$$
-
-将两式相减：
-
-$$
-\boxed{
-D=
-\left(
-nh_2\cos\theta
--nc\sin\theta
--hd
-\right)\sin\alpha
-}
-$$
-
-因此：
-
-$$
-\boxed{
-\sin\alpha=
-\frac{
-D
-}{
-nh_2\cos\theta
--nc\sin\theta
--hd
-}
-}
-$$
-
-也就是：
-
-$$
-\boxed{
-\sin\alpha=
-\frac{
-l_1^2-l_2^2
-}{
-4(
-nh_2\cos\theta
--nc\sin\theta
--hd
-)
-}
-}
-$$
-
-------------------------------------------------------------------------
-
-# 7. 当 $h_2=0$ 时的退化情况
-
-如果：
-
-$$
-h_2=0
-$$
-
-则：
-
-$$
-\sin\alpha= -\frac{
-l_1^2-l_2^2
-}{
-4(hd+nc\sin\theta)
-}
-$$
-
-因此 $h_2$ 会改变 roll 方程中的几何耦合项。
-
-------------------------------------------------------------------------
-
-# 8. 定义 FK 中间变量
-
-为了方便代码实现，定义：
-
-$$
-A(\theta) =
-dn+hc\sin\theta-hh_2\cos\theta
+E(\theta)=b_x\left(a_x c_\theta-a_z s_\theta\right)
 $$
 
 $$
-B(\theta) =
-nh_2\cos\theta-nc\sin\theta-hd
+A(\theta)=a_y b_y+b_z\left(a_x s_\theta+a_z c_\theta\right)
 $$
 
 $$
-N(\theta) =
-C-S-2cm\cos\theta-2mh_2\sin\theta
+B(\theta)=b_y\left(a_x s_\theta+a_z c_\theta\right)-a_y b_z
 $$
 
 则：
 
 $$
 \boxed{
-\cos\alpha=\frac{N(\theta)}{2A(\theta)}
-}
+\begin{aligned}
+l_1^2&=K-2\left[E(\theta)+A(\theta)\cos\alpha\right]-2B(\theta)\sin\alpha\\
+l_2^2&=K-2\left[E(\theta)+A(\theta)\cos\alpha\right]+2B(\theta)\sin\alpha
+\end{aligned}}
 $$
 
+两式只在 $\sin\alpha$ 项上差一个符号：roll 使一侧推杆缩短、另一侧伸长。
+
+------------------------------------------------------------------------
+
+# 4. 化为关于 $\theta$ 的一维方程
+
+定义：
+
 $$
+S=\frac{l_1^2+l_2^2}{2},\qquad D=\frac{l_2^2-l_1^2}{4}
+$$
+
+相加、相减得到（**精确成立，没有交叉项**）：
+
+$$
+\boxed{
+\cos\alpha=\frac{K-S-2E(\theta)}{2A(\theta)}
+},\qquad
 \boxed{
 \sin\alpha=\frac{D}{B(\theta)}
 }
 $$
 
-------------------------------------------------------------------------
-
-# 9. 求解 Pitch 角 $\theta$
-
-利用：
-
-$$
-\sin^2\alpha+\cos^2\alpha=1
-$$
-
-得到：
-
-$$
-\boxed{
-\left(
-\frac{N(\theta)}
-{2A(\theta)}
-\right)^2
-+
-\left(
-\frac{D}
-{B(\theta)}
-\right)^2
-=1
-}
-$$
-
-展开：
-
-$$
-\boxed{
-\frac{
-\left[
-C-S-2cm\cos\theta-2mh_2\sin\theta
-\right]^2
-}{
-4
-\left[
-dn+hc\sin\theta-hh_2\cos\theta
-\right]^2
-}
-+
-\frac{
-D^2
-}{
-\left[
-nh_2\cos\theta-nc\sin\theta-hd
-\right]^2
-}
-=1
-}
-$$
-
-其中：
-
-$$
-S=\frac{l_1^2+l_2^2}{2}
-$$
-
-$$
-D=\frac{l_1^2-l_2^2}{4}
-$$
-
-因此给定 $l_1,l_2$ 后，首先求解：
-
-$$
-\boxed{
-f(\theta)=0
-}
-$$
-
-------------------------------------------------------------------------
-
-# 10. 最终 Roll 角 $\alpha$
-
-求得 $\theta$ 后：
-
-$$
-\sin\alpha= \frac{D}{B(\theta)}
-$$
-
-$$
-\cos\alpha= \frac{N(\theta)}{2A(\theta)}
-$$
-
-因此推荐使用：
-
-$$
-\boxed{
-\alpha=
-\operatorname{atan2}
-\left(
-\frac{D}{B(\theta)},
-\frac{N(\theta)}{2A(\theta)}
-\right)
-}
-$$
-
-## 16. 差分公式修正
-
-对本文第 4 节给出的连接点和旋转矩阵直接展开，两式相减还包含一个
-`d*cos(alpha)` 交叉项。实际关系为：
-
-$$
-D = \sin\alpha\left[
-B(\theta)+2d\left(c\sin\theta-h_2\cos\theta\right)\cos\alpha
-\right]
-$$
-
-其中 `B(theta)` 与第 8 节定义相同。因此 `sin(alpha)=D/B(theta)` 只在
-交叉项为零时成立，不能作为一般机构的正向运动学方程。实现应直接对
-两条长度约束进行二维数值求解，并在求解后回代验证长度误差。
-
-完整展开：
-
-$$
-\boxed{
-\alpha=
-\operatorname{atan2}
-\left(
-\frac{
-l_1^2-l_2^2
-}{
-4(
-nh_2\cos\theta
--nc\sin\theta
--hd
-)
-},
-\frac{
-C-\frac{l_1^2+l_2^2}{2}
--2cm\cos\theta
--2mh_2\sin\theta
-}{
-2(
-dn+hc\sin\theta-hh_2\cos\theta
-)
-}
-\right)
-}
-$$
-
-------------------------------------------------------------------------
-
-# 11. 最终 FK
-
-给定：
-
-\[ l_1,l_2 \]
-
-以及机构参数：
-
-\[ m,n,h,c,d,h_2 \]
-
-首先计算：
-
-$$
-\boxed{
-C=m^2+n^2+h^2+c^2+d^2+h_2^2
-}
-$$
-
-$$
-\boxed{
-S=\frac{l_1^2+l_2^2}{2}
-}
-$$
-
-$$
-\boxed{
-D=\frac{l_1^2-l_2^2}{4}
-}
-$$
-
-然后求解：
-
-$$
-\boxed{
-\frac{
-\left[
-C-S-2cm\cos\theta-2mh_2\sin\theta
-\right]^2
-}{
-4
-\left[
-dn+hc\sin\theta-hh_2\cos\theta
-\right]^2
-}
-+
-\frac{
-D^2
-}{
-\left[
-nh_2\cos\theta-nc\sin\theta-hd
-\right]^2
-}
-=1
-}
-$$
-
-得到：
-
-$$
-\boxed{\theta}
-$$
-
-再计算：
-
-$$
-\boxed{
-\alpha=
-\operatorname{atan2}
-\left(
-\frac{D}{
-nh_2\cos\theta-nc\sin\theta-hd
-},
-\frac{
-C-S-2cm\cos\theta-2mh_2\sin\theta
-}{
-2(dn+hc\sin\theta-hh_2\cos\theta)
-}
-\right)
-}
-$$
-
-最终：
-
-$$
-\boxed{
-FK(l_1,l_2)=
-\begin{bmatrix}
-\alpha\\
-\theta
-\end{bmatrix}
-}
-$$
-
-------------------------------------------------------------------------
-
-# 12. C++ 实现框架
-
-推荐不要把所有公式写成一个长表达式，而是拆成中间变量。
-
-``` cpp
-struct AnkleGeometry
-{
-    double m;
-    double n;
-    double h;
-
-    double c;
-    double d;
-    double h2;
-};
-
-struct AnkleState
-{
-    double alpha;
-    double theta;
-};
-```
-
-## 12.1 Pitch 方程
-
-``` cpp
-double fkEquation(
-    double theta,
-    double l1,
-    double l2,
-    const AnkleGeometry& p)
-{
-    const double st = std::sin(theta);
-    const double ct = std::cos(theta);
-
-    const double C =
-        p.m * p.m +
-        p.n * p.n +
-        p.h * p.h +
-        p.c * p.c +
-        p.d * p.d +
-        p.h2 * p.h2;
-
-    const double S =
-        0.5 * (l1 * l1 + l2 * l2);
-
-    const double D =
-        0.25 * (l1 * l1 - l2 * l2);
-
-    const double A =
-        p.d * p.n +
-        p.h * p.c * st -
-        p.h * p.h2 * ct;
-
-    const double B =
-        p.n * p.h2 * ct -
-        p.n * p.c * st -
-        p.h * p.d;
-
-    const double N =
-        C - S -
-        2.0 * p.c * p.m * ct -
-        2.0 * p.m * p.h2 * st;
-
-    return
-        N * N / (4.0 * A * A) +
-        D * D / (B * B) -
-        1.0;
-}
-```
-
-------------------------------------------------------------------------
-
-# 13. 求解 $\theta$
-
-可以使用 Newton、Secant、Bisection 或 Brent。
-
-例如：
-
-``` cpp
-double theta = theta_last;
-
-for (int i = 0; i < max_iter; ++i)
-{
-    double f = fkEquation(
-        theta,
-        l1,
-        l2,
-        params);
-
-    double df = numericalDerivative(
-        theta,
-        l1,
-        l2,
-        params);
-
-    theta -= f / df;
-
-    if (std::abs(f) < tolerance)
-        break;
-}
-```
-
-在人形机器人实时控制中，可以使用上一周期：
-
-$$
-\theta_{k-1}
-$$
-
-作为当前周期初值：
-
-$$
-\theta_0=\theta_{k-1}
-$$
-
-这样通常比每次进行完整区间搜索更加适合实时控制。
-
-------------------------------------------------------------------------
-
-# 14. 求解 $\alpha$
-
-得到 $\theta$ 后：
-
-``` cpp
-double st = std::sin(theta);
-double ct = std::cos(theta);
-
-double C =
-    m*m + n*n + h*h +
-    c*c + d*d + h2*h2;
-
-double S =
-    0.5 * (l1*l1 + l2*l2);
-
-double D =
-    0.25 * (l1*l1 - l2*l2);
-
-double A =
-    d*n +
-    h*c*st -
-    h*h2*ct;
-
-double B =
-    n*h2*ct -
-    n*c*st -
-    h*d;
-
-double N =
-    C - S -
-    2*c*m*ct -
-    2*m*h2*st;
-
-double sin_alpha =
-    D / B;
-
-double cos_alpha =
-    N / (2.0 * A);
-
-double alpha =
-    std::atan2(
-        sin_alpha,
-        cos_alpha);
-```
-
-------------------------------------------------------------------------
-
-# 15. 完整 FK 接口
-
-最终可以封装成：
-
-``` cpp
-AnkleState fk(
-    double l1,
-    double l2,
-    const AnkleGeometry& p)
-{
-    // 1. Calculate constants
-    const double C =
-        p.m * p.m +
-        p.n * p.n +
-        p.h * p.h +
-        p.c * p.c +
-        p.d * p.d +
-        p.h2 * p.h2;
-
-    const double S =
-        0.5 * (l1 * l1 + l2 * l2);
-
-    const double D =
-        0.25 * (l1 * l1 - l2 * l2);
-
-    // 2. Solve theta
-    double theta =
-        solveTheta(l1, l2, p);
-
-    // 3. Intermediate variables
-    const double st = std::sin(theta);
-    const double ct = std::cos(theta);
-
-    const double A =
-        p.d * p.n +
-        p.h * p.c * st -
-        p.h * p.h2 * ct;
-
-    const double B =
-        p.n * p.h2 * ct -
-        p.n * p.c * st -
-        p.h * p.d;
-
-    const double N =
-        C - S -
-        2.0 * p.c * p.m * ct -
-        2.0 * p.m * p.h2 * st;
-
-    // 4. Solve alpha
-    const double sin_alpha =
-        D / B;
-
-    const double cos_alpha =
-        N / (2.0 * A);
-
-    const double alpha =
-        std::atan2(
-            sin_alpha,
-            cos_alpha);
-
-    return {
-        alpha,
-        theta
-    };
-}
-```
-
-------------------------------------------------------------------------
-
-# 16. 数值奇异性
-
-需要重点检查：
-
-$$
-\boxed{
-A(\theta)=
-dn+hc\sin\theta-hh_2\cos\theta
-}
-$$
-
-以及：
-
-$$
-\boxed{
-B(\theta)=
-nh_2\cos\theta-nc\sin\theta-hd
-}
-$$
-
-如果：
-
-$$
-A(\theta)\rightarrow0
-$$
-
-或者：
-
-$$
-B(\theta)\rightarrow0
-$$
-
-显式 FK 表达式会出现数值问题。
-
-实际控制中还应该进一步计算：
-
-$$
-J_l= \frac{\partial(l_1,l_2)}
-{\partial(\alpha,\theta)}
-$$
-
-并监测：
-
-$$
-\sigma_{\min}(J_l)
-$$
-
-判断机构是否接近运动学奇异位形。
-
-------------------------------------------------------------------------
-
-# 17. 后续控制相关公式
-
-定义：
-
-$$
-\mathbf{l}=
-\begin{bmatrix}
-l_1\\
-l_2
-\end{bmatrix}
-,\qquad \mathbf{q}=
-\begin{bmatrix}
-\alpha\\
-\theta
-\end{bmatrix}
-$$
-
-则：
-
-$$
-\boxed{
-\dot{\mathbf{l}}
-=
-J_l\dot{\mathbf{q}}
-}
-$$
-
-其中：
-
-$$
-\boxed{
-J_l=
-\frac{\partial(l_1,l_2)}
-{\partial(\alpha,\theta)}
-}
-$$
-
-根据虚功原理：
-
-$$
-F^T\delta l = \tau^T\delta q
-$$
-
-因此：
-
-$$
-\boxed{
-\tau=J_l^TF
-}
-$$
-
-即：
-
-$$
-\boxed{
-\begin{bmatrix}
-\tau_{roll}\\
-\tau_{pitch}
-\end{bmatrix}
-=
-J_l^T
-\begin{bmatrix}
-F_1\\
-F_2
-\end{bmatrix}
-}
-$$
-
-这可以作为后续直线电机推力控制与踝关节力矩控制之间的映射基础。
-
-------------------------------------------------------------------------
-
-# 18. FK 总结
-
-最终机构的运动学关系为：
-
-$$
-\boxed{
-(l_1,l_2)
-\rightarrow
-\theta
-\rightarrow
-\alpha
-}
-$$
-
-核心公式为：
+利用 $\sin^2\alpha+\cos^2\alpha=1$：
 
 $$
 \boxed{
 f(\theta)=
-\left(
-\frac{N(\theta)}{2A(\theta)}
-\right)^2+
-\left(
-\frac{D}{B(\theta)}
-\right)^2-1=0
+\left(\frac{K-S-2E(\theta)}{2A(\theta)}\right)^2
++\left(\frac{D}{B(\theta)}\right)^2-1=0
+}
+$$
+
+解出 $\theta$ 后：
+
+$$
+\boxed{
+\alpha=\operatorname{atan2}\!\left(\frac{D}{B(\theta)},\ \frac{K-S-2E(\theta)}{2A(\theta)}\right)
+}
+$$
+
+> 旧版推导采用 $R_x R_y$ 顺序，相减后残留 $d\cos\alpha$ 交叉项，
+> 所以 $\sin\alpha=D/B$ 不严格成立。按 XML 的 $R_yR_x$ 顺序展开后交叉项消失，上式是精确的。
+
+------------------------------------------------------------------------
+
+# 5. 数值求解（代码实现）
+
+`ankle_fk_solver.py` 没有走第 4 节的一维方程，而是直接对两条长度约束做二维 Newton 迭代：
+
+$$
+\mathbf{r}(\alpha,\theta)=
+\begin{bmatrix}
+l_1(\alpha,\theta)-l_1^{*}\\
+l_2(\alpha,\theta)-l_2^{*}
+\end{bmatrix}=0,
+\qquad
+\begin{bmatrix}\alpha\\\theta\end{bmatrix}
+\leftarrow
+\begin{bmatrix}\alpha\\\theta\end{bmatrix}-\lambda\,J_l^{-1}\mathbf{r}
+$$
+
+-   $\lambda$ 由阻尼线搜索确定（从 1 开始折半，直到残差下降）
+-   初值取上一周期的解（实时控制中 1～3 次迭代即可收敛）
+-   不需要除以 $A(\theta)$、$B(\theta)$，所以不存在第 4 节里的除零问题
+
+**伪解处理**：长度方程在关节限位以外还有其他解（例如 $\alpha\approx2.6$ rad）。
+热启动初值离真实姿态太远时，Newton 可能收敛到伪解。构造求解器时传入关节限位：
+
+```python
+solver = AnkleFKSolver(
+    get_geometry("calf_actuator"),
+    alpha_range=CALF_ACTUATOR_ROLL_RANGE,
+    theta_range=CALF_ACTUATOR_PITCH_RANGE,
+)
+```
+
+热启动的结果超出限位（或迭代失败）时，会自动改用零位初值重解。
+
+------------------------------------------------------------------------
+
+# 6. 雅可比矩阵
+
+记推杆向量 $e_i=a_i-Rb_i$，$l_i=\|e_i\|$，对任一关节角 $q\in\{\alpha,\theta\}$：
+
+$$
+\boxed{
+\frac{\partial l_i}{\partial q}=-\frac{e_i^{T}\left(\dfrac{\partial R}{\partial q}\,b_i\right)}{l_i}
 }
 $$
 
 其中：
 
 $$
-\boxed{
-A(\theta)=dn+hc\sin\theta-hh_2\cos\theta
-}
+\frac{\partial R}{\partial\alpha}=
+\begin{bmatrix}
+0 & s_\theta c_\alpha & -s_\theta s_\alpha\\
+0 & -s_\alpha & -c_\alpha\\
+0 & c_\theta c_\alpha & -c_\theta s_\alpha
+\end{bmatrix},
+\qquad
+\frac{\partial R}{\partial\theta}=
+\begin{bmatrix}
+-s_\theta & c_\theta s_\alpha & c_\theta c_\alpha\\
+0 & 0 & 0\\
+-c_\theta & -s_\theta s_\alpha & -s_\theta c_\alpha
+\end{bmatrix}
 $$
 
 $$
-\boxed{
-B(\theta)=nh_2\cos\theta-nc\sin\theta-hd
-}
+J_l=\frac{\partial(l_1,l_2)}{\partial(\alpha,\theta)}=
+\begin{bmatrix}
+\partial l_1/\partial\alpha & \partial l_1/\partial\theta\\
+\partial l_2/\partial\alpha & \partial l_2/\partial\theta
+\end{bmatrix}
 $$
+
+代码中用的是这个解析式（和中心差分对比，误差约 1e-11）。
+
+**奇异性**：监测 $\sigma_{\min}(J_l)$（`check_singularity`），它趋近 0 时，
+推杆长度无法唯一确定关节角，力映射也会失效。
+
+------------------------------------------------------------------------
+
+# 7. 力映射
+
+$$
+\dot{\mathbf{l}}=J_l\,\dot{\mathbf{q}},\qquad
+\mathbf{l}=\begin{bmatrix}l_1\\l_2\end{bmatrix},\quad
+\mathbf{q}=\begin{bmatrix}\alpha\\\theta\end{bmatrix}
+$$
+
+由虚功原理 $F^T\delta\mathbf{l}=\tau^T\delta\mathbf{q}$：
 
 $$
 \boxed{
-N(\theta)=
-C-S-2cm\cos\theta-2mh_2\sin\theta
+\begin{bmatrix}\tau_{roll}\\\tau_{pitch}\end{bmatrix}
+=J_l^{T}
+\begin{bmatrix}F_1\\F_2\end{bmatrix}
 }
 $$
 
-$$
-\boxed{
-C=m^2+n^2+h^2+c^2+d^2+h_2^2
-}
-$$
+$F_i$ 以推杆伸长方向为正。零位时两推杆推力相同，$\tau_{roll}=0$。
 
-$$
-\boxed{
-S=\frac{l_1^2+l_2^2}{2}
-}
-$$
+------------------------------------------------------------------------
 
-$$
-\boxed{
-D=\frac{l_1^2-l_2^2}{4}
-}
-$$
+# 8. C++ 实现框架
 
-求得 $\theta$ 后：
+```cpp
+struct AnkleGeometry
+{
+    // a1 = (ax,  ay, az), a2 = (ax, -ay, az)  踝中心系
+    // b1 = (bx,  by, bz), b2 = (bx, -by, bz)  脚踝局部系
+    double ax, ay, az;
+    double bx, by, bz;
+};
 
-$$
-\boxed{
-\alpha=
-\operatorname{atan2}
-\left(
-\frac{D}{B(\theta)},
-\frac{N(\theta)}{2A(\theta)}
-\right)
+struct AnkleState { double alpha, theta; };
+
+// R = Ry(theta) * Rx(alpha)
+inline void lengths(double alpha, double theta, const AnkleGeometry& p,
+                    double& l1, double& l2)
+{
+    const double sa = std::sin(alpha), ca = std::cos(alpha);
+    const double st = std::sin(theta), ct = std::cos(theta);
+
+    auto len = [&](double ay, double by) {
+        // R * b
+        const double rx =  ct * p.bx + st * sa * by + st * ca * p.bz;
+        const double ry =              ca * by      - sa * p.bz;
+        const double rz = -st * p.bx + ct * sa * by + ct * ca * p.bz;
+        const double ex = p.ax - rx, ey = ay - ry, ez = p.az - rz;
+        return std::sqrt(ex * ex + ey * ey + ez * ez);
+    };
+
+    l1 = len( p.ay,  p.by);
+    l2 = len(-p.ay, -p.by);
 }
-$$
+```
+
+求解流程和 Python 版一致：用上一周期的 $(\alpha,\theta)$ 作初值 → 二维 Newton 加线搜索 → 检查是否在限位内，
+不在就用零位初值重解。
+
+------------------------------------------------------------------------
+
+# 9. 与旧参数的对应
+
+旧版参数 $(m,n,h,c,d,h_2)$ 都取正值，符号写在公式里。换算关系：
+
+| 新参数 | $a_x$ | $a_y$ | $a_z$ | $b_x$ | $b_y$ | $b_z$ |
+|---|---|---|---|---|---|---|
+| 旧参数 | $-m$ | $n$ | $h$ | $-c$ | $d$ | $-h_2$ |
+
+另外，旧版的旋转顺序是 $R_x(\alpha)R_y(\theta)$，已改为与 XML 一致的 $R_y(\theta)R_x(\alpha)$。
