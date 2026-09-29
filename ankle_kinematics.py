@@ -132,6 +132,9 @@ class AnkleKinematics:
         self.alpha_last: Optional[float] = None
         self.theta_last: Optional[float] = None
 
+        # 最近一次 _solve_pose 的 Newton 迭代次数（性能分析用）
+        self.last_iterations = 0
+
     def reset(self):
         """清除热启动记录（轨迹不连续时调用）"""
         self.alpha_last = None
@@ -226,11 +229,12 @@ class AnkleKinematics:
         """对两条长度约束做带阻尼线搜索的二维 Newton 迭代"""
         alpha, theta = alpha_init, theta_init
 
-        for _ in range(max_iter):
+        for k in range(max_iter):
             current = self.inverse_kinematics(alpha, theta)
             residual = (current[0] - l1, current[1] - l2)
             error = max(abs(residual[0]), abs(residual[1]))
             if error < tolerance:
+                self.last_iterations = k
                 return alpha, theta
 
             # J · delta = residual，更新方向为 -delta
@@ -258,6 +262,7 @@ class AnkleKinematics:
 
         final = self.inverse_kinematics(alpha, theta)
         final_error = max(abs(final[0] - l1), abs(final[1] - l2))
+        self.last_iterations = max_iter
         if final_error < tolerance * 10:
             return alpha, theta
         raise ValueError(

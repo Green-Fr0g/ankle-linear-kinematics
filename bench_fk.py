@@ -48,9 +48,9 @@ def circle_poses(kin, duration=4.0, rate=1000.0, roll=0.35, pitch=0.44, freq=0.5
 
 
 def evaluate(kin, poses, cold):
-    """→ (失败次数, roll 最大误差 deg, pitch 最大误差 deg, RMS deg, 平均耗时 us)"""
+    """→ (失败次数, roll 最大误差 deg, pitch 最大误差 deg, RMS deg, 平均耗时 us, 平均迭代次数)"""
     kin.reset()
-    fails, ea, et, sq, n = 0, 0.0, 0.0, 0.0, 0
+    fails, ea, et, sq, n, iters = 0, 0.0, 0.0, 0.0, 0, 0
     t0 = time.perf_counter()
     for a, t, l1, l2 in poses:
         if cold:
@@ -61,13 +61,14 @@ def evaluate(kin, poses, cold):
             fails += 1
             kin.reset()
             continue
+        iters += kin.last_iterations
         da, dt = abs(st.alpha - a), abs(st.theta - t)
         ea, et = max(ea, da), max(et, dt)
         sq += da * da + dt * dt
         n += 1
     us = (time.perf_counter() - t0) / len(poses) * 1e6
     rms = math.sqrt(sq / (2 * n)) if n else math.nan
-    return fails, math.degrees(ea), math.degrees(et), math.degrees(rms), us
+    return fails, math.degrees(ea), math.degrees(et), math.degrees(rms), us, iters / max(n, 1)
 
 
 def main():
@@ -96,10 +97,12 @@ def main():
              ("连续轨迹（热启动）", circle_poses(ref), False))
     for name, poses, cold in cases:
         print(f"\n{name}，{len(poses)} 个样本")
-        print(f"  {'方法':<12}{'失败':>6}{'roll 最大':>12}{'pitch 最大':>12}{'RMS':>12}{'耗时':>12}")
+        print(f"  {'方法':<12}{'失败':>6}{'roll 最大':>12}{'pitch 最大':>12}{'RMS':>12}"
+              f"{'耗时':>12}{'迭代':>8}")
         for m, kin in kins.items():
-            f, ea, et, rms, us = evaluate(kin, poses, cold)
-            print(f"  {m:<12}{f:>6}{ea:>11.2e}°{et:>11.2e}°{rms:>11.2e}°{us:>9.1f} us")
+            f, ea, et, rms, us, it = evaluate(kin, poses, cold)
+            its = "-" if m == "lut" else f"{it:.2f}"
+            print(f"  {m:<12}{f:>6}{ea:>11.2e}°{et:>11.2e}°{rms:>11.2e}°{us:>9.1f} us{its:>8}")
 
 
 if __name__ == "__main__":

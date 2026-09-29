@@ -14,6 +14,10 @@
 比使用时放宽 BUILD_MARGIN，保证限位边界附近的格子四个角点都有值。
 
 速度、力映射与逆解仍使用解析公式（继承自 AnkleKinematics），只替换位置正解。
+
+LutNewtonKinematics 在查表结果上再做 Newton 迭代：查表给出误差约 0.001° 的初值，
+通常 1~2 步即收敛到解析精度；初值总在物理可行分支附近，不依赖上一帧热启动，
+也就不会因输入跳变而收敛到伪解。
 """
 import math
 from pathlib import Path
@@ -181,10 +185,35 @@ class LutKinematics(AnkleKinematics):
         return AnkleState(alpha=alpha, theta=theta)
 
 
+class LutNewtonKinematics(LutKinematics):
+    """位置正解：查表插值给初值 + Newton 迭代精修"""
+
+    def forward_kinematics(self, l1: float, l2: float, alpha_init: Optional[float] = None,
+                           theta_init: Optional[float] = None, max_iter: int = 20,
+                           tolerance: float = 1e-9) -> AnkleState:
+        """查表初值 → Newton 精修；查表失败（表外 / 不可达格子）时退回纯 Newton
+
+        alpha_init / theta_init 被忽略：初值始终取查表结果。
+        """
+        if not (math.isfinite(l1) and math.isfinite(l2)):
+            raise ValueError("l1 和 l2 必须为有限数")
+        try:
+            seed = self.lut.lookup(l1, l2)
+        except ValueError:
+            # 可达区域边缘的格子可能有 NaN 角点，此时用热启动 / 零位的纯 Newton
+            return AnkleKinematics.forward_kinematics(self, l1, l2, max_iter=max_iter,
+                                                      tolerance=tolerance)
+        alpha, theta = self._solve_pose(l1, l2, seed[0], seed[1], max_iter, tolerance)
+        if not self._in_range(alpha, theta):
+            raise ValueError(f"解超出关节限位: alpha={alpha}, theta={theta}")
+        self.alpha_last, self.theta_last = alpha, theta
+        return AnkleState(alpha=alpha, theta=theta)
+
+
 # ======================================================================
 # 正解方法选择（sim_control / bench_fk 共用）
 # ======================================================================
-FK_METHODS = ("newton", "lut")
+FK_METHODS = ("newton", "lut", "lut-newton")
 
 
 def make_kinematics(method: str, geometry: AnkleGeometry, alpha_range: Vec2,
@@ -194,9 +223,12 @@ def make_kinematics(method: str, geometry: AnkleGeometry, alpha_range: Vec2,
 
     newton: Newton 迭代（热启动 + 零位回退）
     lut:    查表 + 双线性插值
+    lut-newton: 查表初值 + Newton 精修
     """
     if method == "newton":
         return AnkleKinematics(geometry, alpha_range, theta_range)
     if method == "lut":
         return LutKinematics(geometry, alpha_range, theta_range, length_range, step)
+    if method == "lut-newton":
+        return LutNewtonKinematics(geometry, alpha_range, theta_range, length_range, step)
     raise ValueError(f"未知的正解方法: {method}，可选 {', '.join(FK_METHODS)}")

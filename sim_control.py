@@ -481,8 +481,9 @@ def parse_args():
     common.add_argument("--log-rate", type=float, default=200.0, help="记录频率 Hz（默认 200）")
     common.add_argument("--out", type=Path, default=None,
                         help="输出目录（默认 logs/<时间>）")
-    common.add_argument("--fk", choices=FK_METHODS, default="lut",
-                        help="位置正解方法：newton 迭代 / lut 查表插值（默认 lut）")
+    common.add_argument("--fk", choices=FK_METHODS, default="lut-newton",
+                        help="位置正解方法：newton 迭代 / lut 查表插值 / "
+                             "lut-newton 查表初值 + Newton 精修（默认 lut-newton）")
 
     js = sub.add_parser("joystick", parents=[common], help="手柄控制两根直线模组")
     js.add_argument("--duration", type=float, default=None,
