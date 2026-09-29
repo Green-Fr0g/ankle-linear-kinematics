@@ -16,6 +16,7 @@
     .venv/bin/python sim_control.py joystick
     .venv/bin/python sim_control.py trajectory --shape circle --duration 10
     .venv/bin/python sim_control.py trajectory --shape sine --no-viewer
+    .venv/bin/python sim_control.py trajectory --fk newton        # 切换位置正解方法
     .venv/bin/python sim_control.py --help / joystick --help / trajectory --help
 """
 import argparse
@@ -29,10 +30,12 @@ from pathlib import Path
 import mujoco
 
 from ankle_kinematics import AnkleKinematics
+from ankle_lut import FK_METHODS, make_kinematics
 from param import (
     get_geometry,
     CALF_ACTUATOR_NOMINAL_LENGTH as L0,
     CALF_ACTUATOR_STROKE_RANGE as STROKE_RANGE,
+    CALF_ACTUATOR_LENGTH_RANGE as LENGTH_RANGE,
     CALF_ACTUATOR_ROLL_RANGE as ROLL_RANGE,
     CALF_ACTUATOR_PITCH_RANGE as PITCH_RANGE,
 )
@@ -54,14 +57,17 @@ NAN = float("nan")
 class AnkleSim:
     """MuJoCo 模型 + 只依赖编码器传感器的状态估计"""
 
-    def __init__(self, xml_path: Path = XML_PATH):
+    def __init__(self, fk: str = "newton", xml_path: Path = XML_PATH):
         self.model = mujoco.MjModel.from_xml_path(str(xml_path))
         self.data = mujoco.MjData(self.model)
         self.dt = self.model.opt.timestep
-        self.kin = AnkleKinematics(
+        self.fk = fk
+        self.kin: AnkleKinematics = make_kinematics(
+            fk,
             get_geometry("calf_actuator"),
             alpha_range=(ROLL_RANGE[0] - ESTIMATOR_MARGIN, ROLL_RANGE[1] + ESTIMATOR_MARGIN),
             theta_range=(PITCH_RANGE[0] - ESTIMATOR_MARGIN, PITCH_RANGE[1] + ESTIMATOR_MARGIN),
+            length_range=LENGTH_RANGE,
         )
         self.estimate_failures = 0
 
@@ -475,6 +481,8 @@ def parse_args():
     common.add_argument("--log-rate", type=float, default=200.0, help="记录频率 Hz（默认 200）")
     common.add_argument("--out", type=Path, default=None,
                         help="输出目录（默认 logs/<时间>）")
+    common.add_argument("--fk", choices=FK_METHODS, default="lut",
+                        help="位置正解方法：newton 迭代 / lut 查表插值（默认 lut）")
 
     js = sub.add_parser("joystick", parents=[common], help="手柄控制两根直线模组")
     js.add_argument("--duration", type=float, default=None,
@@ -502,7 +510,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    sim = AnkleSim()
+    sim = AnkleSim(args.fk)
+    print(f"[正解] {args.fk}")
     viewer = not args.no_viewer
 
     if args.mode == "joystick":
@@ -520,6 +529,7 @@ def main():
         title = (f"关节轨迹控制：{args.shape}，roll ±{args.roll_amp:g}°，"
                  f"pitch ±{args.pitch_amp:g}°，{args.freq:g} Hz")
 
+    title += f"，正解 {args.fk}"
     rows = run(sim, ctrl, args.duration, viewer, realtime, args.log_rate)
     if not rows:
         print("[结束] 没有记录到数据")
