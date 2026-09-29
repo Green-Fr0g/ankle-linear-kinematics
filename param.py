@@ -52,6 +52,9 @@ CALF_ACTUATOR_LENGTH_RANGE = (
 CALF_ACTUATOR_ROLL_RANGE = (-0.87, 0.87)   # ankle_roll_joint
 CALF_ACTUATOR_PITCH_RANGE = (-0.87, 0.87)  # ankle_pitch_joint
 
+# 状态估计时的限位余量（rad）：MuJoCo 关节限位是软约束，撞限位时会略微越界
+CALF_ACTUATOR_ESTIMATOR_MARGIN = 0.05
+
 
 def get_geometry(name: str = "standard") -> AnkleGeometry:
     """获取指定名称的几何参数配置

@@ -13,6 +13,11 @@
 网格节点用 AnkleKinematics.forward_kinematics（Newton）离线求解，建表时限位
 比使用时放宽 BUILD_MARGIN，保证限位边界附近的格子四个角点都有值。
 
+表固定为文件 model/lut/calf_actuator_fk_lut.npz，运行时从文件读取。
+修改 param.py 中的几何 / 行程 / 限位后需重新生成（读取时会校验，不一致直接报错）：
+    .venv/bin/python ankle_lut.py              # 默认 1 mm 步长
+    .venv/bin/python ankle_lut.py --step 0.5
+
 速度、力映射与逆解仍使用解析公式（继承自 AnkleKinematics），只替换位置正解。
 """
 import math
@@ -23,11 +28,21 @@ import numpy as np
 
 from ankle_geometry import AnkleGeometry, AnkleState
 from ankle_kinematics import AnkleKinematics
+from param import (
+    get_geometry,
+    CALF_ACTUATOR_LENGTH_RANGE,
+    CALF_ACTUATOR_ROLL_RANGE,
+    CALF_ACTUATOR_PITCH_RANGE,
+    CALF_ACTUATOR_ESTIMATOR_MARGIN,
+)
 
 Vec2 = Tuple[float, float]
 
 # 建表时关节限位额外放宽的量（rad），让限位附近的格子角点可用
 BUILD_MARGIN = 0.1
+
+# 固定的查表文件
+DEFAULT_LUT_PATH = Path(__file__).parent / "model" / "lut" / "calf_actuator_fk_lut.npz"
 
 
 def _widen(rng: Vec2, margin: float) -> Vec2:
@@ -95,6 +110,7 @@ class AnkleLUT:
                          geometry.bx, geometry.by, geometry.bz],
             "alpha_range": list(alpha_range),
             "theta_range": list(theta_range),
+            "length_range": [l_min, l_max],
             "build_margin": BUILD_MARGIN,
         }
         return cls(l_min, step, alpha, theta, meta)
@@ -108,9 +124,36 @@ class AnkleLUT:
 
     @classmethod
     def load(cls, path: Path) -> "AnkleLUT":
-        with np.load(Path(path)) as f:
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"查表文件不存在: {path}\n请先生成: .venv/bin/python ankle_lut.py")
+        with np.load(path) as f:
             meta = {k[5:]: f[k].tolist() for k in f.files if k.startswith("meta_")}
             return cls(float(f["l_min"]), float(f["step"]), f["alpha"], f["theta"], meta)
+
+    def check_matches(self, geometry: AnkleGeometry, alpha_range: Vec2, theta_range: Vec2,
+                      length_range: Vec2, tol: float = 1e-9):
+        """校验表的建表参数与当前模型一致，防止改了 param.py 却还在用旧表
+
+        Raises:
+            ValueError: 任一参数不一致
+        """
+        expect = {
+            "geometry": [geometry.ax, geometry.ay, geometry.az,
+                         geometry.bx, geometry.by, geometry.bz],
+            "alpha_range": list(alpha_range),
+            "theta_range": list(theta_range),
+            "length_range": list(length_range),
+        }
+        bad = [k for k, v in expect.items()
+               if k not in self.meta or len(self.meta[k]) != len(v)
+               or any(abs(a - b) > tol for a, b in zip(self.meta[k], v))]
+        if bad:
+            detail = "; ".join(f"{k}: 表 {self.meta.get(k)} / 当前 {expect[k]}" for k in bad)
+            raise ValueError(
+                f"查表文件与当前参数不一致（{detail}）\n"
+                f"请重新生成: .venv/bin/python ankle_lut.py")
 
     # ------------------------------------------------------------------
     # 查表
@@ -163,7 +206,7 @@ class LutKinematics(AnkleKinematics):
             alpha_range, theta_range: 关节限位，查表结果超出时抛出 ValueError
             length_range: 建表的推杆长度范围 (l_min, l_max)
             step: 网格步长（米），默认 1 mm
-            lut: 已建好的表；None 时现场建表
+            lut: 已建好的表（通常由 AnkleLUT.load 读入）；None 时现场建表
         """
         super().__init__(geometry, alpha_range, theta_range)
         self.lut = lut or AnkleLUT.build(geometry, length_range, step, alpha_range, theta_range)
@@ -187,16 +230,69 @@ class LutKinematics(AnkleKinematics):
 FK_METHODS = ("newton", "lut")
 
 
+def calf_actuator_config():
+    """calf_actuator 模型的几何与状态估计用限位（建表、仿真、对比脚本共用）"""
+    m = CALF_ACTUATOR_ESTIMATOR_MARGIN
+    return dict(
+        geometry=get_geometry("calf_actuator"),
+        alpha_range=_widen(CALF_ACTUATOR_ROLL_RANGE, m),
+        theta_range=_widen(CALF_ACTUATOR_PITCH_RANGE, m),
+        length_range=CALF_ACTUATOR_LENGTH_RANGE,
+    )
+
+
+def load_lut(path: Path, geometry: AnkleGeometry, alpha_range: Vec2, theta_range: Vec2,
+             length_range: Vec2) -> AnkleLUT:
+    """从文件读取查表并校验与当前参数一致"""
+    lut = AnkleLUT.load(path)
+    lut.check_matches(geometry, alpha_range, theta_range, length_range)
+    return lut
+
+
 def make_kinematics(method: str, geometry: AnkleGeometry, alpha_range: Vec2,
                     theta_range: Vec2, length_range: Vec2,
+                    lut_path: Optional[Path] = DEFAULT_LUT_PATH,
                     step: float = 1e-3) -> AnkleKinematics:
     """按方法名构造运动学对象
 
     newton: Newton 迭代（热启动 + 零位回退）
     lut:    查表 + 双线性插值
+
+    Args:
+        lut_path: 查表文件；None 时按 step 现场建表（仅用于对比不同步长）
     """
     if method == "newton":
         return AnkleKinematics(geometry, alpha_range, theta_range)
+    lut = (load_lut(lut_path, geometry, alpha_range, theta_range, length_range)
+           if lut_path is not None else None)
     if method == "lut":
-        return LutKinematics(geometry, alpha_range, theta_range, length_range, step)
+        return LutKinematics(geometry, alpha_range, theta_range, length_range, step, lut)
     raise ValueError(f"未知的正解方法: {method}，可选 {', '.join(FK_METHODS)}")
+
+
+# ======================================================================
+# 生成查表文件
+# ======================================================================
+def main():
+    import argparse
+    import time
+
+    p = argparse.ArgumentParser(description="生成 calf_actuator 位置正解查表文件")
+    p.add_argument("--step", type=float, default=1.0, help="网格步长 mm（默认 1）")
+    p.add_argument("--out", type=Path, default=DEFAULT_LUT_PATH,
+                   help=f"输出文件（默认 {DEFAULT_LUT_PATH.relative_to(Path(__file__).parent)}）")
+    args = p.parse_args()
+
+    cfg = calf_actuator_config()
+    t0 = time.perf_counter()
+    lut = AnkleLUT.build(cfg["geometry"], cfg["length_range"], args.step * 1e-3,
+                         cfg["alpha_range"], cfg["theta_range"])
+    lut.save(args.out)
+    print(f"[查表] {lut.n}x{lut.n}，步长 {lut.step*1e3:.3f} mm，"
+          f"l ∈ [{lut.l_min:.4f}, {lut.l_max:.4f}] m，可达节点 {lut.valid_ratio:.1%}，"
+          f"建表 {time.perf_counter()-t0:.2f} s")
+    print(f"[输出] {args.out}（{args.out.stat().st_size / 1024:.0f} KB）")
+
+
+if __name__ == "__main__":
+    main()
