@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<mujoco model="calf_actuator_closed_chain">
+  <compiler
+    angle="radian"
+    meshdir="../meshes"
+    inertiafromgeom="auto"/>
+
+  <option
+    timestep="0.001"
+    gravity="0 0 -9.81"/>
+
+  <asset>
+    <material
+      name="calf_mat"
+      rgba="0.792156862745098 0.819607843137255 0.933333333333333 1"/>
+
+    <!-- 这三个网格坐标已是米制、且原点在零件重心附近 -->
+    <mesh name="calf_link_mesh" file="calf_link.STL"/>
+    <mesh name="ankle_pitch_Link_mesh" file="ankle_pitch_Link.STL"/>
+    <mesh name="ankle_roll_Link_mesh" file="ankle_roll_Link.STL"/>
+
+    <!-- 这两个网格坐标是毫米制、且原点在零件角点，故统一缩放 0.001 -->
+    <mesh name="actuator_mesh" file="actuator.STL" scale="0.001 0.001 0.001"/>
+    <mesh name="actuator_link_mesh" file="actuator_link.STL" scale="0.001 0.001 0.001"/>
+
+    <!-- 天空盒: 渐变天空, 让视口背景不再是纯黑。
+         rgb1 = 天顶色, rgb2 = 地平线/下方色; width 决定清晰度(skybox 的 height 会被忽略)。 -->
+    <texture name="skybox" type="skybox" builtin="gradient"
+             rgb1="0.30 0.52 0.78" rgb2="0.06 0.08 0.14"
+             width="512" height="3072"/>
+  </asset>
+
+  <worldbody>
+    <!-- ==================== 场景光源 ====================
+         主光从模型前上方打过来, 辅光在另一侧补暗部; 顶灯(headlight)默认仍然开启。 -->
+    <light name="key_light" pos="0.45 -0.55 0.55" dir="-0.47 0.55 -0.75"
+           diffuse="0.8 0.8 0.8" specular="0.35 0.35 0.35" ambient="0.1 0.1 0.1"
+           castshadow="true"/>
+    <light name="fill_light" pos="-0.6 0.5 0.3" dir="0.58 -0.5 -0.5"
+           diffuse="0.3 0.3 0.35" specular="0 0 0" ambient="0 0 0"
+           castshadow="false"/>
+
+    <!-- ==================== 基座：小腿，固定于世界 ==================== -->
+    <body name="calf_link" pos="0 0 0">
+      <!-- 推杆上安装点 a1 / a2（原 calf.xml 中写成 mm，此处换算为 m） -->
+      <site name="a1" pos="-0.012 0.0405 -0.087"/>
+      <site name="a2" pos="-0.012 -0.0405 -0.087"/>
+
+      <inertial
+        pos="0.0415997539173993 -1.14910984994054E-06 -0.160155714788031"
+        mass="0.659588846787576"
+        fullinertia="0.00855785216103093 0.00839121480382441 0.000498761690857444 2.40618122120997E-08 -0.000266804946443103 -6.36885181781793E-09"/>
+
+      <geom type="mesh" mesh="calf_link_mesh" group="3" contype="1" conaffinity="1"/>
+      <geom type="mesh" mesh="calf_link_mesh" group="2" contype="0" conaffinity="0" material="calf_mat"/>
+
+      <!-- ==================== 踝关节链 ==================== -->
+      <body name="ankle_pitch_Link" pos="0.049 0 -0.378">
+        <inertial
+          pos="-1.72653047414428E-09 -7.42401573550211E-08 -1.11022302462516E-15"
+          mass="0.027946057905562"
+          fullinertia="2.11511081243381E-06 2.66813037751991E-06 3.15057076904493E-06 -9.2718219489784E-18 7.35688240736048E-12 3.43465476763097E-13"/>
+
+        <joint name="ankle_pitch_joint" type="hinge" pos="0 0 0" axis="0 1 0"
+               limited="true" range="-0.87 0.87"/>
+
+        <geom type="mesh" mesh="ankle_pitch_Link_mesh" group="3" contype="1" conaffinity="1"/>
+        <geom type="mesh" mesh="ankle_pitch_Link_mesh" group="2" contype="0" conaffinity="0" material="calf_mat"/>
+
+        <body name="ankle_roll_Link" pos="0 0 0">
+          <!-- 推杆下安装点 b1 / b2 -->
+          <site name="b1" pos="-0.075 0.0405 0.001"/>
+          <site name="b2" pos="-0.075 -0.0405 0.001"/>
+
+          <inertial
+            pos="0.00675784163132453 -5.59256398968699E-08 -0.0448677217933386"
+            mass="0.786874959533859"
+            fullinertia="0.000938194737035875 0.00461306085996444 0.00546710342606719 1.79286978988552E-09 -1.76827790832499E-05 1.00316220230222E-09"/>
+
+          <joint name="ankle_roll_joint" type="hinge" pos="0 0 0" axis="1 0 0"
+                 limited="true" range="-0.87 0.87"/>
+
+          <geom type="mesh" mesh="ankle_roll_Link_mesh" group="3" contype="1" conaffinity="1"/>
+          <geom type="mesh" mesh="ankle_roll_Link_mesh" group="2" contype="0" conaffinity="0" material="calf_mat"/>
+        </body>
+      </body>
+
+      <!-- ============ 直线滑块 / 推杆 1：a1（球铰）到 b1（connect 闭合） ============ -->
+      <!-- 缸体 actuator：装在 a1，球铰保证推杆可自由摆动 -->
+      <body name="actuator_b1" pos="-0.012 0.0405 -0.087">
+        <joint name="actuator_ball_a1" type="ball" pos="0 0 0" damping="1.0"/>
+        <!-- 网格长轴局部 +X；球头(eye)在 x=220mm 处，装配时使球心落在 a1、销轴沿 Y -->
+        <geom name="actuator_b1_geom" type="mesh" mesh="actuator_mesh"
+              pos="-0.038408 -0.119 -0.218402" quat="0.511913 -0.511913 -0.487796 -0.487796"
+              group="2" contype="0" conaffinity="0" material="calf_mat"/>
+
+        <!-- 活塞杆 actuator_link：球头(x=14mm)球心落在 b1，杆沿 -u 插进缸体 -->
+        <body name="actuator_link_b1" pos="-0.014 0 -0.29">
+          <site name="rod_end_b1" pos="0 0 0"/>
+          <joint name="actuator_slide_b1" type="slide" pos="0 0 0"
+                 axis="-0.048220 0 -0.998837" limited="true" range="-0.04 0.04"/>
+          <geom name="actuator_link_b1_geom" type="mesh" mesh="actuator_link_mesh"
+                pos="-0.015158 -0.119 -0.013285" quat="0.511913 -0.511913 -0.487796 -0.487796"
+                group="2" contype="0" conaffinity="0" material="calf_mat"/>
+        </body>
+      </body>
+
+      <!-- ============ 直线滑块 / 推杆 2：a2（球铰）到 b2（connect 闭合） ============ -->
+      <body name="actuator_b2" pos="-0.012 -0.0405 -0.087">
+        <joint name="actuator_ball_a2" type="ball" pos="0 0 0" damping="1.0"/>
+        <geom name="actuator_b2_geom" type="mesh" mesh="actuator_mesh"
+              pos="-0.038408 -0.119 -0.218402" quat="0.511913 -0.511913 -0.487796 -0.487796"
+              group="2" contype="0" conaffinity="0" material="calf_mat"/>
+
+        <body name="actuator_link_b2" pos="-0.014 0 -0.29">
+          <site name="rod_end_b2" pos="0 0 0"/>
+          <joint name="actuator_slide_b2" type="slide" pos="0 0 0"
+                 axis="-0.048220 0 -0.998837" limited="true" range="-0.04 0.04"/>
+          <geom name="actuator_link_b2_geom" type="mesh" mesh="actuator_link_mesh"
+                pos="-0.015158 -0.119 -0.013285" quat="0.511913 -0.511913 -0.487796 -0.487796"
+                group="2" contype="0" conaffinity="0" material="calf_mat"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- ==================== 闭链约束：b1/b2 与活塞杆末端铰接 ==================== -->
+  <equality>
+    <connect name="connect_b1" site1="b1" site2="rod_end_b1" solref="0.002 1"/>
+    <connect name="connect_b2" site1="b2" site2="rod_end_b2" solref="0.002 1"/>
+  </equality>
+
+  <!-- ==================== 排除腿内部的假接触 ====================
+       MuJoCo 的网格碰撞用凸包, 而 calf_link 是镂空件, 其凸包会把踝部零件包住,
+       参考位形下就产生 ~3cm 的假穿透, 仿真一开始就把踝暴力弹开(表现为剧烈抖动)。
+       这里排除这几对内部接触。若以后需要真实的踝部限位, 应改用简化碰撞体(胶囊/盒)。 -->
+  <contact>
+    <exclude body1="calf_link" body2="ankle_pitch_Link"/>
+    <exclude body1="calf_link" body2="ankle_roll_Link"/>
+    <exclude body1="ankle_pitch_Link" body2="ankle_roll_Link"/>
+  </contact>
+
+  <!-- ==================== 两个直线模组的驱动 ====================
+       用 position: 控制量就是"模组伸长量"(m), 与真实直线模组(带位置反馈)一致。
+       开机时 ctrl=0 即保持参考伸长量, 小腿不会被自重压下去;
+       若用 motor(纯力控), ctrl=0 时模组可反驱, 踝会掉下去。
+       阻尼用显式 kv=100 而不是 dampratio: dampratio 只按推杆自身极小的惯量算,
+       得到的 kv 远小于实际负载(整条腿反射到模组的等效质量约 0.76kg),
+       会导致阶跃超调 ~50%、来回甩几下(就是"阻尼式抖动"); kv=100 对应临界阻尼。 -->
+  <actuator>
+    <position name="linear_actuator_b1" joint="actuator_slide_b1"
+              kp="5000" kv="100" ctrlrange="-0.04 0.04" forcerange="-200 200"/>
+    <position name="linear_actuator_b2" joint="actuator_slide_b2"
+              kp="5000" kv="100" ctrlrange="-0.04 0.04" forcerange="-200 200"/>
+  </actuator>
+</mujoco>

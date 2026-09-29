@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="calf_SLDASM">
+  <compiler
+    angle="radian"
+    meshdir="../meshes"
+    inertiafromgeom="false"/>
+
+  <option
+    timestep="0.001"
+    gravity="0 0 -9.81"/>
+
+  <asset>
+    <material
+      name="calf_mat"
+      rgba="0.792156862745098 0.819607843137255 0.933333333333333 1"/>
+
+    <mesh name="calf_link_mesh" file="calf_link.STL"/>
+    <mesh name="ankle_pitch_Link_mesh" file="ankle_pitch_Link.STL"/>
+    <mesh name="ankle_roll_Link_mesh" file="ankle_roll_Link.STL"/>
+  </asset>
+
+  <worldbody>
+    <body name="calf_link" pos="0 0 0">
+      <site name="a1" pos="-12 40.5 -87"/>
+      <site name="a2" pos="-12 -40.5 -87"/>
+
+      <inertial
+        pos="0.0415997539173993 -1.14910984994054E-06 -0.160155714788031"
+        mass="0.659588846787576"
+        fullinertia="0.00855785216103093 0.00839121480382441 0.000498761690857444 2.40618122120997E-08 -0.000266804946443103 -6.36885181781793E-09"/>
+  
+      <geom
+        type="mesh"
+        mesh="calf_link_mesh"
+        group="3"
+        contype="1"
+        conaffinity="1"/>
+
+      <geom
+        type="mesh"
+        mesh="calf_link_mesh"
+        group="2"
+        contype="0"
+        conaffinity="0"
+        material="calf_mat"/>
+
+      <body name="ankle_pitch_Link" pos="0.049 0 -0.378">
+        <inertial
+          pos="-1.72653047414428E-09 -7.42401573550211E-08 -1.11022302462516E-15"
+          mass="0.027946057905562"
+          fullinertia="2.11511081243381E-06 2.66813037751991E-06 3.15057076904493E-06 -9.2718219489784E-18 7.35688240736048E-12 3.43465476763097E-13"/>
+
+        <joint
+          name="ankle_pitch_joint"
+          type="hinge"
+          pos="0 0 0"
+          axis="0 1 0"
+          limited="true"
+          range="-0.87 0.87"/>
+
+        <geom
+          type="mesh"
+          mesh="ankle_pitch_Link_mesh"
+          group="3"
+          contype="1"
+          conaffinity="1"/>
+
+        <geom
+          type="mesh"
+          mesh="ankle_pitch_Link_mesh"
+          group="2"
+          contype="0"
+          conaffinity="0"
+          material="calf_mat"/>
+
+        <body name="ankle_roll_Link" pos="0 0 0">
+          <site name="b1" pos="-75 40.5 1"/>
+          <site name="b2" pos="-75 -40.5 1"/>
+
+          <inertial
+            pos="0.00675784163132453 -5.59256398968699E-08 -0.0448677217933386"
+            mass="0.786874959533859"
+            fullinertia="0.000938194737035875 0.00461306085996444 0.00546710342606719 1.79286978988552E-09 -1.76827790832499E-05 1.00316220230222E-09"/>
+
+          <joint
+            name="ankle_roll_joint"
+            type="hinge"
+            pos="0 0 0"
+            axis="1 0 0"
+            limited="true"
+            range="-0.87 0.87"/>
+
+          <geom
+            type="mesh"
+            mesh="ankle_roll_Link_mesh"
+            group="3"
+            contype="1"
+            conaffinity="1"/>
+
+          <geom
+            type="mesh"
+            mesh="ankle_roll_Link_mesh"
+            group="2"
+            contype="0"
+            conaffinity="0"
+            material="calf_mat"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="ankle_pitch_motor" joint="ankle_pitch_joint" ctrlrange="-20 20"/>
+    <motor name="ankle_roll_motor" joint="ankle_roll_joint" ctrlrange="-20 20"/>
+  </actuator>
+</mujoco>
