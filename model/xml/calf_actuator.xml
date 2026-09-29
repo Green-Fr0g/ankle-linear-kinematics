@@ -29,6 +29,12 @@
     <texture name="skybox" type="skybox" builtin="gradient"
              rgb1="0.30 0.52 0.78" rgb2="0.06 0.08 0.14"
              width="512" height="3072"/>
+
+    <!-- 地面: 棋盘格纹理, 每格 0.1 m, 便于目测位移 -->
+    <texture name="grid" type="2d" builtin="checker"
+             rgb1="0.20 0.23 0.28" rgb2="0.14 0.16 0.20"
+             width="512" height="512" mark="edge" markrgb="0.35 0.38 0.45"/>
+    <material name="floor_mat" texture="grid" texrepeat="10 10" texuniform="true" reflectance="0.1"/>
   </asset>
 
   <worldbody>
@@ -41,8 +47,14 @@
            diffuse="0.3 0.3 0.35" specular="0 0 0" ambient="0 0 0"
            castshadow="false"/>
 
-    <!-- ==================== 基座：小腿，固定于世界 ==================== -->
-    <body name="calf_link" pos="0 0 0">
+    <!-- ==================== 地面 ==================== -->
+    <geom name="floor" type="plane" size="1 1 0.05" pos="0 0 0" material="floor_mat"/>
+
+    <!-- ==================== 基座：小腿，固定于世界 ====================
+         小腿抬高到 z=0.6 m：踝关节在全部限位内摆动时, 脚底最低点约在小腿系 z=-0.537 m
+         (roll≈0.73, pitch=0.87), 离地仍有约 6 cm, 整条腿始终不接触地面。
+         calf_link 下所有局部坐标(a1/a2、踝中心等)不变, param.py 无需修改。 -->
+    <body name="calf_link" pos="0 0 0.6">
       <!-- 推杆上安装点 a1 / a2（原 calf.xml 中写成 mm，此处换算为 m） -->
       <site name="a1" pos="-0.012 0.0405 -0.087"/>
       <site name="a2" pos="-0.012 -0.0405 -0.087"/>
@@ -72,6 +84,8 @@
           <!-- 推杆下安装点 b1 / b2 -->
           <site name="b1" pos="-0.075 0.0405 0.001"/>
           <site name="b2" pos="-0.075 -0.0405 0.001"/>
+          <!-- 脚部 IMU 安装点：取踝旋转中心正下方的脚板上, 坐标轴与 ankle_roll_Link 一致 -->
+          <site name="foot_imu" pos="0 0 -0.04" size="0.006" rgba="0.9 0.3 0.2 1"/>
 
           <inertial
             pos="0.00675784163132453 -5.59256398968699E-08 -0.0448677217933386"
@@ -154,4 +168,28 @@
     <position name="linear_actuator_b2" joint="actuator_slide_b2"
               kp="5000" kv="100" ctrlrange="-0.04 0.04" forcerange="-200 200"/>
   </actuator>
+
+  <!-- ==================== 传感器 ====================
+       模组编码器、脚部 IMU: 模拟实物上装得到的传感器;
+         踝关节角度实物上测不到, 要由编码器行程经 forward_kinematics 反算。
+       踝关节真值: 仿真独有, 只用来检验上面反算的结果对不对。
+       推杆长度 l_i = CALF_ACTUATOR_NOMINAL_LENGTH + 行程(slide 轴与 a→b 方向一致)。 -->
+  <sensor>
+    <!-- 直线模组编码器：行程(m)与速度(m/s), 正值 = 推杆伸长 -->
+    <actuatorpos name="stroke_b1" actuator="linear_actuator_b1"/>
+    <actuatorpos name="stroke_b2" actuator="linear_actuator_b2"/>
+    <actuatorvel name="stroke_vel_b1" actuator="linear_actuator_b1"/>
+    <actuatorvel name="stroke_vel_b2" actuator="linear_actuator_b2"/>
+
+    <!-- 脚部 IMU -->
+    <framequat name="foot_quat" objtype="site" objname="foot_imu"/>
+    <gyro name="foot_gyro" site="foot_imu"/>
+    <accelerometer name="foot_acc" site="foot_imu"/>
+
+    <!-- 仿真真值：踝关节角度(rad)与角速度(rad/s) -->
+    <jointpos name="ankle_roll_pos" joint="ankle_roll_joint"/>
+    <jointpos name="ankle_pitch_pos" joint="ankle_pitch_joint"/>
+    <jointvel name="ankle_roll_vel" joint="ankle_roll_joint"/>
+    <jointvel name="ankle_pitch_vel" joint="ankle_pitch_joint"/>
+  </sensor>
 </mujoco>

@@ -17,3 +17,6 @@ MUJOCO_LOG.TXT
 .idea/
 .DS_Store
 *.swp
+
+# sim_control.py 运行输出（CSV / 曲线图）
+logs/

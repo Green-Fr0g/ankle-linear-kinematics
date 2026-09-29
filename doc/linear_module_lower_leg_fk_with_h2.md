@@ -162,7 +162,7 @@ $$
 
 # 5. 数值求解（代码实现）
 
-`ankle_fk_solver.py` 没有走第 4 节的一维方程，而是直接对两条长度约束做二维 Newton 迭代：
+`ankle_kinematics.py` 没有走第 4 节的一维方程，而是直接对两条长度约束做二维 Newton 迭代：
 
 $$
 \mathbf{r}(\alpha,\theta)=
@@ -184,7 +184,7 @@ $$
 热启动初值离真实姿态太远时，Newton 可能收敛到伪解。构造求解器时传入关节限位：
 
 ```python
-solver = AnkleFKSolver(
+solver = AnkleKinematics(
     get_geometry("calf_actuator"),
     alpha_range=CALF_ACTUATOR_ROLL_RANGE,
     theta_range=CALF_ACTUATOR_PITCH_RANGE,
